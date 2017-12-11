@@ -1,4 +1,3 @@
-const EventEmitter = require("events");
 const cluster = require("cluster");
 const ClusterWorkers = {};
 const WorkerPids = {};
