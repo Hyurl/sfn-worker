@@ -199,7 +199,7 @@ class Worker extends EventEmitter {
             if (cb instanceof Function) {
                 this.once("----get-workers----", workers => {
                     for (let i in workers) {
-                        workers[i] = new Worker(workers[i].id, workers[i].keepAlive);
+                        workers[i] = new this.constructor(workers[i].id, workers[i].keepAlive);
                     }
                     cb(workers);
                 }).emit("----get-workers----");
