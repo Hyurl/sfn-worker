@@ -48,7 +48,7 @@ class Worker extends EventEmitter {
      *  may accept parameters, which are the data sent by the other end of the
      *  worker, or other workers.
      * 
-     * @return {Worker}
+     * @return {this}
      */
     on(event, handler) {
         if (cluster.isMaster) {
@@ -76,7 +76,7 @@ class Worker extends EventEmitter {
      *  may accept parameters, which are the data sent by the other end of the
      *  worker, or other workers.
      * 
-     * @return {Worker}
+     * @return {this}
      */
     once(event, handler) {
         if (cluster.isMaster) {
@@ -139,7 +139,7 @@ class Worker extends EventEmitter {
      * @param {String[]} id The worker id, you can pass several ids at same 
      *  time to set several receivers.
      * 
-     * @return {Worker}
+     * @return {this}
      */
     to(...id) {
         if (id[0] instanceof Array) {
@@ -199,9 +199,9 @@ class Worker extends EventEmitter {
             if (cb instanceof Function) {
                 this.once("----get-workers----", workers => {
                     for (let i in workers) {
-                        if (workers[i].id === this.id){
+                        if (workers[i].id === this.id) {
                             workers[i] = this;
-                        }else{
+                        } else {
                             workers[i] = new this.constructor(workers[i].id, workers[i].keepAlive);
                         }
                     }
@@ -232,6 +232,24 @@ class Worker extends EventEmitter {
         } else {
             process.exit(826); // 826 indicates reboot code.
         }
+    }
+
+    /**
+     * @param {Number} n
+     * @return {this}
+     */
+    setMaxListeners(n) {
+        super.setMaxListeners(n);
+        if (cluster.isMaster) {
+            var max = 0;
+            for (let i in Workers) {
+                max += Workers[i].getMaxListeners();
+            }
+            cluster.setMaxListeners(max);
+        } else {
+            process.setMaxListeners(n);
+        }
+        return this;
     }
 
     /** Whether the process is the master. */
