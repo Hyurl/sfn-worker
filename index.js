@@ -3,6 +3,7 @@ const EventEmitter = require("events");
 const ClusterWorkers = {};
 const WorkerPids = {};
 const Workers = {};
+var MaxListeners = 0;
 
 /**
  * A tool for process management and communications. 
@@ -241,7 +242,7 @@ class Worker extends EventEmitter {
     setMaxListeners(n) {
         super.setMaxListeners(n);
         if (cluster.isMaster) {
-            var max = 0;
+            var max = MaxListeners;
             for (let i in Workers) {
                 max += Workers[i].getMaxListeners();
             }
@@ -281,6 +282,8 @@ class Worker extends EventEmitter {
     static on(event, handler) {
         if (cluster.isMaster) {
             if (event === "online") {
+                MaxListeners += 1;
+                cluster.setMaxListeners(cluster.getMaxListeners() + 1);
                 cluster.on("online", worker => {
                     var { id, keepAlive, reborn } = WorkerPids[worker.process.pid];
                     if (!reborn) {
@@ -289,6 +292,8 @@ class Worker extends EventEmitter {
                     }
                 });
             } else if (event === "exit") {
+                MaxListeners += 1;
+                cluster.setMaxListeners(cluster.getMaxListeners() + 1);
                 cluster.on("exit", (worker, code, signal) => {
                     var { id, keepAlive } = WorkerPids[worker.process.pid];
                     // Keep-alive workers only emit this event once.
