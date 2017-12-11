@@ -1,8 +1,8 @@
 const cluster = require("cluster");
+const EventEmitter = require("events");
 const ClusterWorkers = {};
 const WorkerPids = {};
 const Workers = {};
-const ReservedEvents = ["online", "exit", "error"];
 
 /**
  * A tool for process management and communications. 
@@ -18,7 +18,7 @@ const ReservedEvents = ["online", "exit", "error"];
  * This module uses predictable and user-defined IDs to differ workers, so 
  * you can always know which is which.
  */
-class Worker {
+class Worker extends EventEmitter {
     /**
      * Creates a new worker.
      * 
@@ -29,6 +29,8 @@ class Worker {
      *  default is `false`.
      */
     constructor(id, keepAlive = false) {
+        super();
+
         this.id = id;
         this.keepAlive = keepAlive;
         this.state = "connecting";
@@ -49,18 +51,18 @@ class Worker {
      * @return {Worker}
      */
     on(event, handler) {
-        if (ReservedEvents.includes(event)) {
-            this.constructor.on(event, handler);
-        } else {
-            if (cluster.isMaster) {
+        if (cluster.isMaster) {
+            if (event === "error" || event === "exit") {
+                super.on(event, handler);
+            } else {
                 cluster.on("message", (worker, msg) => {
                     if (msg && msg.id === this.id && msg.event === event) {
                         handler.call(this, ...msg.data);
                     }
                 });
-            } else {
-                process.on(event, handler);
             }
+        } else {
+            process.on(event, handler);
         }
         return this;
     }
@@ -77,18 +79,18 @@ class Worker {
      * @return {Worker}
      */
     once(event, handler) {
-        if (ReservedEvents.includes(event)) {
-            this.constructor.once(event, handler);
-        } else {
-            if (cluster.isMaster) {
+        if (cluster.isMaster) {
+            if (event === "error" || event === "exit") {
+                super.once(event, handler);
+            } else {
                 cluster.once("message", (worker, msg) => {
                     if (msg && msg.id === this.id && msg.event === event) {
                         handler.call(this, ...msg.data);
                     }
                 });
-            } else {
-                process.once(event, handler);
             }
+        } else {
+            process.once(event, handler);
         }
         return this;
     }
@@ -104,7 +106,7 @@ class Worker {
      * @return {Boolean}
      */
     emit(event, ...data) {
-        if (ReservedEvents.includes(event))
+        if (event === "online" || event === "error" || event === "exit")
             return false;
 
         if (cluster.isMaster) {
@@ -163,7 +165,7 @@ class Worker {
      * @return {Boolean}
      */
     broadcast(event, ...data) {
-        if (ReservedEvents.includes(event))
+        if (event === "online" || event === "error" || event === "exit")
             return false;
 
         if (cluster.isMaster) {
@@ -242,19 +244,22 @@ class Worker {
         return this;
     }
 
-    /**
-     * Adds a listener function to an event.
-     * @inner
+    /** 
+     * Adds a listener function to an event, which only accepts `online` and 
+     * `exit`. All worker actions should be put in the callback function which
+     * pass the worker parameter.
+     * 
+     * @param {"online" | "exit"} event The event name.
+     * 
+     * @param {(worker: Worker)=>void} handler An event handler function, it 
+     *  accepts only one parameter, which is the worker.
+     * 
+     * @return {Worker}
      */
-    static _bind(event, handler, once = false) {
-        var method = once ? "once" : "on";
-
-        if (event === "online" && once) // once not workers with online.
-            return this;
-
+    static on(event, handler) {
         if (cluster.isMaster) {
             if (event === "online") {
-                cluster[method]("online", worker => {
+                cluster.on("online", worker => {
                     var { id, keepAlive, reborn } = WorkerPids[worker.process.pid];
                     if (!reborn) {
                         // Reborn workers do not emit this event.
@@ -262,22 +267,17 @@ class Worker {
                     }
                 });
             } else if (event === "exit") {
-                cluster[method]("exit", (worker, code, signal) => {
+                cluster.on("exit", (worker, code, signal) => {
                     var { id, keepAlive } = WorkerPids[worker.process.pid];
                     // Keep-alive workers only emit this event once.
                     if (!code || (code && !keepAlive)) {
                         handler(Workers[id], code, signal);
                     }
                 });
-            } else if (event === "error") {
-                cluster[method]("error", (worker) => {
-                    var { id } = WorkerPids[worker.process.pid];
-                    handler(Workers[id]);
-                });
             }
         } else {
             if (event === "online") {
-                process[method]("message", msg => {
+                process.on("message", msg => {
                     if (msg && msg.event === event) {
                         var { id, keepAlive } = msg.data[0];
                         if (!Workers[id]) {
@@ -293,53 +293,16 @@ class Worker {
                     }
                 });
             } else if (event === "exit") {
-                process[method]("exit", (code, signal) => {
+                process.on("exit", (code, signal) => {
                     var { id, keepAlive } = WorkerPids[process.pid];
                     // Keep-alive workers only emit this event once.
                     if (!code || (code && !keepAlive)) {
                         handler(Workers[id], code, signal);
                     }
                 });
-            } else if (event === "error") {
-                process[method]("error", () => {
-                    var { id } = WorkerPids[process.pid];
-                    handler(Workers[id]);
-                });
             }
         }
         return this;
-    }
-
-    /** 
-     * Adds a listener function to an event, which accepts `online`, `exit` 
-     * and `error`. All worker actions should be put in the callback function 
-     * which pass the worker parameter.
-     * 
-     * @param {"online" | "exit" | "error"} event The event name.
-     * 
-     * @param {(worker: Worker)=>void} handler An event handler function, it 
-     *  accepts only one parameter, which is the worker.
-     * 
-     * @return {Worker}
-     */
-    static on(event, handler) {
-        return this._bind(event, handler);
-    }
-
-    /** 
-     * Adds a listener function to an event that will be run only once, which 
-     * accepts `exit` and `error`. All worker actions should be put in the 
-     * callback function which pass the worker parameter.
-     * 
-     * @param {"exit" | "error"} event The event name.
-     * 
-     * @param {(worker: Worker)=>void} handler An event handler function, it 
-     *  accepts only one parameter, which is the worker.
-     * 
-     * @return {Worker}
-     */
-    static once(event, handler) {
-        return this._bind(event, handler, true);
     }
 
     /**
@@ -353,7 +316,7 @@ class Worker {
      *  listeners.
      */
     static emit(event, ...data) {
-        if (ReservedEvents.includes(event))
+        if (event === "online" || event === "error" || event === "exit")
             return false;
 
         if (cluster.isMaster) {
@@ -406,7 +369,7 @@ class Worker {
      *  listeners.
      */
     static broadcast(event, ...data) {
-        if (ReservedEvents.includes(event))
+        if (event === "online" || event === "error" || event === "exit")
             return false;
 
         if (cluster.isMaster) {
@@ -507,12 +470,12 @@ function createWorker(target, reborn = false) {
             createWorker(target, true);
         } else {
             target.state = "closed";
+            target.emit("exit", code, signal);
             delete Workers[id];
             delete ClusterWorkers[id];
         }
     }).on("error", err => {
-        // If any error occurs, kill the worker process.
-        worker.kill("SIGKILL");
+        target.emit("error", err);
     });
 }
 

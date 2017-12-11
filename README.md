@@ -190,6 +190,9 @@ worker.getWorkers().then(workers=>{
 });
 ```
 
+Be aware, do not add event listeners to the workers got by this method, they 
+won't not work in a worker process. 
+
 ### `worker.exit()`
 
 Terminates the current worker. If this method is called, even if you set the 
@@ -202,9 +205,9 @@ worker not to `keepAlive`, it will be restarted anyway.
 
 ### `Worker.on(event: string, handler: (...data: Any[])=>void)`
 
-The static version `on()` can only listens two events: `online`, `error` and 
-`exit`. When a worker is created and ready for communications, `online` event 
-will be triggered.
+The static version `on()` can only listens two events: `online`, and `exit`. 
+When a worker is created and ready for communications, `online` event will be 
+triggered.
 
 ```javascript
 Worker.on("online", worker=>{
@@ -214,11 +217,6 @@ Worker.on("online", worker=>{
     console.log("Worker %s exits.", worker.id)
 });
 ```
-
-### `Worker.once(event: string, handler: (...data: Any[])=>void)`
-
-This method is similar to `Worker.on()`, except it only supports `online` and 
-`exit` events.
 
 **Be aware**, binding a listener to `online` is required, and you must do any 
 stuffs related to that `worker` in the listener function. This principle works
