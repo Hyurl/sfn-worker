@@ -113,6 +113,16 @@ if(isMaster){
 
 The worker id you specified.
 
+### `worker.keepAlive`
+
+Whether the worker should keep alive, default is `false` if you don't set 
+`keepAlive` to `true`.
+
+### `worker.state`
+
+The state of the worker, possible values are: `connecting`, `online` and 
+`closed`, in a worker process, only shows `online`.
+
 ### `worker.on(event: string, handler: (...data?: Any[])=>void)`
 
 Adds a listener function to an event. The `handler` function will be 

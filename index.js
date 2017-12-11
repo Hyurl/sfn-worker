@@ -4,17 +4,6 @@ const WorkerPids = {};
 const Workers = {};
 const ReservedEvents = ["online", "exit", "error"];
 
-// polyfill of Object.values().
-if (Object.values === undefined) {
-    Object.values = (obj) => {
-        var values = [];
-        for (let i in obj) {
-            values.push(obj[i]);
-        }
-        return values;
-    }
-}
-
 /**
  * A tool for process management and communications. 
  * 
@@ -42,9 +31,10 @@ class Worker {
     constructor(id, keepAlive = false) {
         this.id = id;
         this.keepAlive = keepAlive;
+        this.state = "connecting";
         this.receivers = null;
-        if (cluster.isMaster && !ClusterWorkers[id])
-            createWorker(id, keepAlive);
+        if (cluster.isMaster && (!Workers[id] || Workers[id] === "closed"))
+            createWorker(this);
     }
 
     /** 
@@ -223,7 +213,6 @@ class Worker {
     exit() {
         if (cluster.isMaster) {
             ClusterWorkers[this.id].kill();
-            delete ClusterWorkers[this.id];
         } else {
             process.exit();
         }
@@ -232,8 +221,8 @@ class Worker {
     /** Restarts the current worker. */
     reboot() {
         if (cluster.isMaster) {
-            ClusterWorkers[this.id].kill();
-            createWorker(this.id, this.keepAlive, true);
+            this.state = "closed";
+            ClusterWorkers[this.id].send("----reboot----");
         } else {
             process.exit(826); // 826 indicates reboot code.
         }
@@ -269,9 +258,6 @@ class Worker {
                     var { id, keepAlive, reborn } = WorkerPids[worker.process.pid];
                     if (!reborn) {
                         // Reborn workers do not emit this event.
-                        if (!Workers[id]) {
-                            Workers[id] = new this(id, keepAlive);
-                        }
                         handler(Workers[id]);
                     }
                 });
@@ -298,6 +284,9 @@ class Worker {
                             // Initiate worker instance.
                             Workers[id] = new this(id, keepAlive);
                             WorkerPids[process.pid] = { id, keepAlive };
+                            Workers[id].state = "online";
+
+                            // Emit event for Worker.getWorker().
                             process.emit("----online----", id);
                         }
                         handler(Workers[id]);
@@ -443,7 +432,7 @@ class Worker {
     static getWorkers(cb = null) {
         if (cb instanceof Function) {
             if (this.isMaster) {
-                cb(Object.values(Workers));
+                cb(getValues(Workers));
             } else {
                 throw new ReferenceError(`Cannot call static method '${this.name}.getWorkers()' in a worker process.`);
             }
@@ -469,9 +458,9 @@ class Worker {
             throw new Error(`Cannot call static method '${this.name}.getChannel()' in the master process.`);
         }
         if (cb instanceof Function) {
-            var id = Object.keys(Workers)[0];
-            if (id) {
-                cb(Workers[id]);
+            var worker = getValues(Workers)[0];
+            if (worker) {
+                cb(worker);
             } else {
                 process.once("----online----", id => {
                     cb(Workers[id]);
@@ -485,25 +474,42 @@ class Worker {
     }
 }
 
+function getValues(obj) {
+    if (Object.values instanceof Function) {
+        return Object.values(obj);
+    } else {
+        var values = [];
+        for (let i in obj) {
+            values.push(obj[i]);
+        }
+        return values;
+    }
+}
+
 /** Creates worker process. */
-function createWorker(id, keepAlive, reborn = false) {
-    var worker = cluster.fork();
+function createWorker(target, reborn = false) {
+    var { id, keepAlive } = target,
+        worker = cluster.fork();
+
+    Workers[id] = target;
     ClusterWorkers[id] = worker;
     WorkerPids[worker.process.pid] = { id, keepAlive, reborn };
 
     worker.on("online", () => {
+        target.state = "online";
         worker.send({
             event: "online",
-            data: [{ id, keepAlive }]
+            data: [target]
         });
     }).on("exit", (code, signal) => {
         if ((code || signal == "SIGKILL") && keepAlive || code === 826) {
             // If a worker exits accidentally, create a new one.
-            createWorker(id, keepAlive, true);
+            createWorker(target, true);
         } else {
+            target.state = "closed";
+            delete Workers[id];
             delete ClusterWorkers[id];
         }
-        // delete WorkerPids[worker.process.pid];
     }).on("error", err => {
         // If any error occurs, kill the worker process.
         worker.kill("SIGKILL");
@@ -526,7 +532,7 @@ if (cluster.isMaster) {
     Worker.on("online", worker => {
         // Handle requests to get workers from a worker.
         worker.on("----get-workers----", () => {
-            worker.emit("----get-workers----", Object.values(Workers));
+            worker.emit("----get-workers----", getValues(Workers));
         });
     });
 } else {
@@ -534,6 +540,8 @@ if (cluster.isMaster) {
     process.on("message", (msg) => {
         if (msg && msg.event) {
             process.emit(msg.event, ...msg.data);
+        } else if (msg === "----reboot----") {
+            process.exit(826);
         }
     });
 }
