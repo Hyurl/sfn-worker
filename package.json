@@ -3,6 +3,7 @@
     "version": "0.1.4",
     "description": "Simple Friendly Node.js Worker management for communications.",
     "main": "index.js",
+    "types": "index.d.ts",
     "scripts": {
         "test": "node test"
     },
@@ -15,7 +16,7 @@
     "author": {
         "name": "Ayon Lee",
         "email": "i@hyurl.com",
-        "url": "hyurl.com"
+        "url": "http://hyurl.com"
     },
     "repository": {
         "type": "git",

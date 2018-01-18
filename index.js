@@ -23,9 +23,9 @@ class Worker extends EventEmitter {
     /**
      * Creates a new worker.
      * 
-     * @param {String} id An unique ID of the worker.
+     * @param {string} id An unique ID of the worker.
      * 
-     * @param {Boolean} keepAlive If `true`, when the worker process 
+     * @param {boolean} keepAlive If `true`, when the worker process 
      *  accidentally exits, create a new one to replace it immediately. 
      *  default is `false`.
      */
@@ -43,27 +43,27 @@ class Worker extends EventEmitter {
     /** 
      * Adds a listener function to an event.
      * 
-     * @param {String} event The event name.
+     * @param {string|symbol} event The event name.
      * 
-     * @param {(...data?: Any[])=>void} handler An event handler function, it 
+     * @param {(...data?: any[])=>void} listener An event listener function, it 
      *  may accept parameters, which are the data sent by the other end of the
      *  worker, or other workers.
      * 
      * @return {this}
      */
-    on(event, handler) {
+    on(event, listener) {
         if (cluster.isMaster) {
             if (event === "error" || event === "exit") {
-                super.on(event, handler);
+                super.on(event, listener);
             } else {
                 cluster.on("message", (worker, msg) => {
                     if (msg && msg.id === this.id && msg.event === event) {
-                        handler.call(this, ...msg.data);
+                        listener.call(this, ...msg.data);
                     }
                 });
             }
         } else {
-            process.on(event, handler);
+            process.on(event, listener);
         }
         return this;
     }
@@ -71,27 +71,27 @@ class Worker extends EventEmitter {
     /** 
      * Adds a listener function to an event that will be run only once.
      * 
-     * @param {String} event The event name.
+     * @param {string|symbol} event The event name.
      * 
-     * @param {(...data?: Any[])=>void} handler An event handler function, it
+     * @param {(...data?: any[])=>void} listener An event listener function, it
      *  may accept parameters, which are the data sent by the other end of the
      *  worker, or other workers.
      * 
      * @return {this}
      */
-    once(event, handler) {
+    once(event, listener) {
         if (cluster.isMaster) {
             if (event === "error" || event === "exit") {
-                super.once(event, handler);
+                super.once(event, listener);
             } else {
                 cluster.once("message", (worker, msg) => {
                     if (msg && msg.id === this.id && msg.event === event) {
-                        handler.call(this, ...msg.data);
+                        listener.call(this, ...msg.data);
                     }
                 });
             }
         } else {
-            process.once(event, handler);
+            process.once(event, listener);
         }
         return this;
     }
@@ -99,12 +99,12 @@ class Worker extends EventEmitter {
     /**
      * Emits an event to the other end of the worker.
      * 
-     * @param {String} event The event name.
+     * @param {string|symbol} event The event name.
      * 
-     * @param {Any[]} [data] A list of data, they will be received by event 
+     * @param {any[]} [data] A list of data, they will be received by event 
      *  listeners.
      * 
-     * @return {Boolean}
+     * @return {boolean}
      */
     emit(event, ...data) {
         if (event === "online" || event === "error" || event === "exit")
@@ -137,7 +137,7 @@ class Worker extends EventEmitter {
     /**
      * Sets receivers that the event will only be emitted to them.
      * 
-     * @param {String[]} id The worker id, you can pass several ids at same 
+     * @param {string[]} id The worker id, you can pass several ids at same 
      *  time to set several receivers.
      * 
      * @return {this}
@@ -158,12 +158,12 @@ class Worker extends EventEmitter {
     /**
      * Emits an event to all workers (the current one included).
      * 
-     * @param {String} event The event name.
+     * @param {string|symbol} event The event name.
      * 
-     * @param {Any[]} [data] A list of data, they will be received by event 
+     * @param {any[]} [data] A list of data, they will be received by event 
      *  listeners.
      * 
-     * @return {Boolean}
+     * @return {boolean}
      */
     broadcast(event, ...data) {
         if (event === "online" || event === "error" || event === "exit")
@@ -236,7 +236,7 @@ class Worker extends EventEmitter {
     }
 
     /**
-     * @param {Number} n
+     * @param {number} n
      * @return {this}
      */
     setMaxListeners(n) {
@@ -274,12 +274,12 @@ class Worker extends EventEmitter {
      * 
      * @param {"online" | "exit"} event The event name.
      * 
-     * @param {(worker: Worker)=>void} handler An event handler function, it 
+     * @param {(worker: Worker)=>void} listener An event listener function, it 
      *  accepts only one parameter, which is the worker.
      * 
-     * @return {Worker}
+     * @return {typeof Worker}
      */
-    static on(event, handler) {
+    static on(event, listener) {
         if (cluster.isMaster) {
             if (event === "online") {
                 MaxListeners += 1;
@@ -288,7 +288,7 @@ class Worker extends EventEmitter {
                     var { id, keepAlive, reborn } = WorkerPids[worker.process.pid];
                     if (!reborn) {
                         // Reborn workers do not emit this event.
-                        handler(Workers[id]);
+                        listener(Workers[id]);
                     }
                 });
             } else if (event === "exit") {
@@ -298,7 +298,7 @@ class Worker extends EventEmitter {
                     var { id, keepAlive } = WorkerPids[worker.process.pid];
                     // Keep-alive workers only emit this event once.
                     if (!code || (code && !keepAlive)) {
-                        handler(Workers[id], code, signal);
+                        listener(Workers[id], code, signal);
                     }
                 });
             }
@@ -316,7 +316,7 @@ class Worker extends EventEmitter {
                             // Emit event for Worker.getWorker().
                             process.emit("----online----", id);
                         }
-                        handler(Workers[id]);
+                        listener(Workers[id]);
                     }
                 });
             } else if (event === "exit") {
@@ -324,7 +324,7 @@ class Worker extends EventEmitter {
                     var { id, keepAlive } = WorkerPids[process.pid];
                     // Keep-alive workers only emit this event once.
                     if (!code || (code && !keepAlive)) {
-                        handler(Workers[id], code, signal);
+                        listener(Workers[id], code, signal);
                     }
                 });
             }
@@ -337,9 +337,9 @@ class Worker extends EventEmitter {
      * `Worker.to()` before calling this method, then it will act the same 
      * as broadcast.
      * 
-     * @param {String} event The event name.
+     * @param {string|symbol} event The event name.
      * 
-     * @param {Any[]} [data] A list of data, they will be received by event 
+     * @param {any[]} [data] A list of data, they will be received by event 
      *  listeners.
      */
     static emit(event, ...data) {
@@ -365,10 +365,10 @@ class Worker extends EventEmitter {
     /**
      * Sets receivers that the event will only be emitted to them.
      * 
-     * @param {String[]} id The worker id, you can pass several ids at same 
+     * @param {string[]} id The worker id, you can pass several ids at same 
      *  time to set several receivers.
      * 
-     * @return {Worker}
+     * @return {typeof Worker}
      */
     static to(...id) {
         if (cluster.isMaster) {
@@ -390,9 +390,9 @@ class Worker extends EventEmitter {
     /**
      * Emits an event to all workers (worker processes).
      * 
-     * @param {String} event The event name.
+     * @param {string|symbol} event The event name.
      * 
-     * @param {Any[]} [data] A list of data, they will be received by event 
+     * @param {any[]} [data] A list of data, they will be received by event 
      *  listeners.
      */
     static broadcast(event, ...data) {
