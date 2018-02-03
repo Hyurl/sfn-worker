@@ -61,7 +61,7 @@ declare class Worker extends EventEmitter {
     /** Whether the process is a worker. */
     static readonly isWorker: boolean;
 
-    static readonly Woker: typeof Worker;
+    static readonly Worker: typeof Worker;
     
     /** Adds a listener function to event `online` or `exit`. */
     static on(event: "online" | "exit", listener: (worker: Worker) => void): typeof Worker;
