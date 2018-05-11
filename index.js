@@ -36,7 +36,7 @@ class Worker extends EventEmitter {
         this.keepAlive = keepAlive;
         this.state = "connecting";
         this.receivers = null;
-        if (cluster.isMaster && (!Workers[id] || Workers[id] === "closed"))
+        if (cluster.isMaster && (!Workers[id] || Workers[id].state == "closed"))
             createWorker(this);
     }
 
@@ -458,7 +458,7 @@ class Worker extends EventEmitter {
             }
         } else {
             return new Promise(resolve => {
-                this.getChannel(resolve);
+                this.getWorker(resolve);
             });
         }
     }

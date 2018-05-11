@@ -1,6 +1,6 @@
 {
     "name": "sfn-worker",
-    "version": "0.1.51",
+    "version": "0.1.60",
     "description": "Simple Friendly Node.js Worker management for communications.",
     "main": "index.js",
     "types": "index.d.ts",
@@ -26,5 +26,8 @@
         "url": "https://github.com/Hyurl/sfn-worker/issues",
         "email": "i@hyurl.com"
     },
-    "license": "MIT"
+    "license": "MIT",
+    "dependencies": {
+        "@types/node": "^10.0.8"
+    }
 }
