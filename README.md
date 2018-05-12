@@ -4,16 +4,18 @@
 
 ## Notes
 
-When you create a `new Worker`, a new worker process will be forked. You can 
+When you create a `new Worker()`, a new worker process will be forked. You can 
 keep a worker alive, so when it exits accidentally, a new one will be forked 
 to replace it.
 
 This module is designed as convenient as it can, many of its methods can be 
 used both in the master or in a worker process, and you can add event 
-listeners and emit events both in the master or in the worker process.
+listeners and emit events both in the master and in the worker process.
 
 This module uses predictable and user-defined IDs to differ workers, so 
 you can always know which is which.
+
+The package supports any version of Node.js that higher than 4.0.0.
 
 ## Install
 
@@ -24,9 +26,9 @@ npm install sfn-worker
 ## Example
 
 ```javascript
-const { Worker, isMaster } = require("sfn-worker");
+const Worker = require("sfn-worker");
 
-if (isMaster) {
+if (Worker.isMaster) {
     // Master process
     // Create two workers A and B, and keep them alive.
     new Worker("A", true);
@@ -73,22 +75,17 @@ These events really mean something if you bind events to them:
 - `exit`
 
 But they don't totally work in all circumstances, e.g. the `online` can only 
-be used by `Channel.on()`.
+be used by `Worker.on()`.
 
 ## API
 
-### `Worker.Worker`
-
-A recursive reference of the class.
-
-### `Worker.isMaster`
+### constant `isMaster`
 
 Whether the current process is the master process.
 
-### `Worker.isWorker`
+### constant `isWorker`
 
-Whether the current process is a worker process, opposite to 
-`Worker.isMaster`.
+Whether the current process is a worker process, opposite to `isMaster`.
 
 ### `new Worker(id: string, keepAlive?: boolean)`
 
@@ -123,24 +120,32 @@ Whether the worker should keep alive, default is `false` if you don't set
 The state of the worker, possible values are: `connecting`, `online` and 
 `closed`, in a worker process, only shows `online`.
 
-### `worker.on(event: string, handler: (...data?: Any[])=>void)`
+### `woker.isConnected(): boolean`
 
-Adds a listener function to an event. The `handler` function will be 
+Whether the worker process is connected (`online`).
+
+### `worker.isDead(): boolean`
+
+Whether the worker process is dead (`closed`).
+
+### `worker.on(event: string, listener: (...data?: Any[]) => void): this`
+
+Adds a listener function to an event. The `listener` function will be 
 called every time the `event` is triggered, it may accept parameters, which 
 are the data sent by the other end of the worker, or other workers.
 
 ```javascript
-worker.on("hi", (msg)=>{
+worker.on("hi", (msg) => {
     console.log("worker says hi: '%s'", msg);
 });
 ```
 
-### `worker.once(event: string, handler: (...data?: Any[])=>void)`
+### `worker.once(event: string, listener: (...data?: Any[]) => void): this`
 
-This method is similar to `worker.on()`, except the `handler` will be run only 
+This method is similar to `worker.on()`, except the `listener` will be run only 
 once.
 
-### `worker.emit(event: string, ...data?: any[])`
+### `worker.emit(event: string, ...data?: any[]): boolean`
 
 Emits an `event` to the other end of the worker, `data` will be send to that 
 end, so its event listeners can receive and manipulate them.
@@ -149,15 +154,19 @@ end, so its event listeners can receive and manipulate them.
 worker.emit("hi", `Hello, I'm worker ${worker.id}.`);
 ```
 
-### `worker.to(...id: string)`
+### `worker.to(...workers: Array<string | Worker>): this`
 
-Sets receivers that the event will only be emitted to them.
+Sets receivers that the event will only be emitted to them. Since *2.0*, you 
+can call `to()` multiple times to concatenate several receivers.
 
 ```javascript
 worker.to("A").emit("hi", `Hello, I'm worker ${worker.id}.`);
+
+// or
+worker.to(workerA).emit("hi", `Hello, I'm worker ${worker.id}.`);
 ```
 
-### `worker.broadcast(event: string, ...data?: any[])`
+### `worker.broadcast(event: string, ...data?: any[]): boolean`
 
 Emits an `event` to all workers (the current one included). Remember, when you
 broadcast a message, it will always be sent to worker ends, so listening such 
@@ -171,27 +180,20 @@ code at where listens the event.
 worker.broadcast("hi", `Hi everybody, I'm worker ${worker.id}.`);
 ```
 
-### `worker.getWorkers(cb?: (workers: Worker[])=>void)`
+### `worker.getWorkers(cb?: (workers: Worker[]) => void): void | Promise<Worker[]>`
 
-This method allows you getting all workers, whether in the master or a worker
-process. If you provide the argument `cb`, it accepts one parameter, which is 
-an array carries all workers. If you don't provide `cb`, then a `Promise` will 
-be returned, and the callback function of `then()` is very much the same as 
-`cb`.
+*deprecated* since *2.0*, use static version `Worker.getWorkers()` instead.
 
 ```javascript
-worker.getWorkers(workers=>{
+worker.getWorkers(workers => {
     // ...
 });
 
 // Or
-worker.getWorkers().then(workers=>{
+worker.getWorkers().then(workers => {
     // ...
 });
 ```
-
-Be aware, do not add event listeners to the workers got by this method, they 
-won't not work in a worker process. 
 
 ### `worker.exit()`
 
@@ -203,17 +205,17 @@ worker to `keepAlive`, it will be terminated anyway.
 Restarts the current worker. If this method is called, even if you set the 
 worker not to `keepAlive`, it will be restarted anyway.
 
-### `Worker.on(event: string, handler: (...data: Any[])=>void)`
+### `Worker.on(event: string, listener: (...data: Any[]) => void): Worker`
 
 The static version `on()` can only listens two events: `online`, and `exit`. 
 When a worker is created and ready for communications, `online` event will be 
 triggered.
 
 ```javascript
-Worker.on("online", worker=>{
+Worker.on("online", worker => {
     console.log("Worker %s is online.", worker.id);
     // ...
-}).on("exit", worker=>{
+}).on("exit", worker => {
     console.log("Worker %s exits.", worker.id)
 });
 ```
@@ -222,7 +224,7 @@ Worker.on("online", worker=>{
 stuffs related to that `worker` in the listener function. This principle works
 both in master or in a worker process.
 
-### `Worker.emit(event: string, ...data?: any[])`
+### `Worker.emit(event: string, ...data?: any[]): boolean`
 
 Similar to the instantiated version, but can only be used in the master 
 process.
@@ -232,20 +234,20 @@ static version `emit()`, its usage is pretty much the same as the instantiated
 version. Be aware this method will broadcast messages to all workers, unless 
 you specify a receiver by calling `Worker.to()`.
 
-### `Worker.to(...id: string)`
+### `Worker.to(...workers: Array<string | Worker>): Worker`
 
 Similar to the instantiated version, but can only be used in the master 
-process.
-
-**Be aware**, you must call `emit()` very after calling this method, because 
-its a static version, if you don't do this, there is no guarantee that its 
-state won't be changed when you calling `emit()` after a while.
+process. Since *2.0*, you can call `to()` multiple times to concatenate 
+several receivers.
 
 ```javascript
 Worker.to("A").emit("event name", "Hi, worker A!");
+
+// or
+Worker.to(workerA).emit("event name", "Hi, worker A!");
 ```
 
-### `Worker.broadcast(event: string, ...data?: any[])`
+### `Worker.broadcast(event: string, ...data?: any[]): boolean`
 
 Similar to the instantiated version, but can only be used in the master 
 process.
@@ -254,43 +256,52 @@ process.
 Worker.broadcast("event name", "Hi, everyone, I'm your master!");
 ```
 
-### `Worker.getWorkers(cb?: (workers: Worker[])=>void)`
+### `Worker.getWorkers(cb?: (workers: Worker[]) => void): void | Promise<Worker[]>`
 
-Similar to the instantiated version, but can only be used in the master 
-process.
+This method allows you getting all connected workers, whether in the master or
+a worker process. If you provide the argument `cb`, it accepts one parameter, 
+which is an array carries all workers. If you don't provide `cb`, then a 
+`Promise` will be returned, and the callback function of `then()` is very much
+the same as `cb`.
 
 ```javascript
-Worker.getWorkers(workers=>{
+Worker.getWorkers(workers => {
     // ...
 });
 
 // Or
-Worker.getWorkers().then(workers=>{
+Worker.getWorkers().then(workers => {
     // ...
 });
 ```
 
-### `Worker.getWorker(cb:? (worker: Worker)=>void)`
+Be aware, **DON'T** add event listeners to the workers got by this method, 
+they won't work in the worker process. Actually, you should always add event 
+listeners in the event `online` scope.
+
+### `Worker.getWorker(cb:? (worker: Worker) => void): void | Promise<Worker>`
 
 This method allows you getting the current worker instance in a worker process
 outside the `Worker.on("online")` scope. It's very helpful sometimes when you 
 want to get the worker, but you don't want to or it's hard to put your code 
-inside `Worker.on("online")`.
+inside `Worker.on("online")` (e.g. in separated files or scopes).
 
-If you don't pass a `cb` function, this method will return a `Promise`.
+If you don't pass a `cb` function, this method will return a `Promise`. If the
+worker isn't ready, then the callback function will be called whenever the 
+worker is online.
 
 ```javascript
-Worker.on("online", worker=>{
+Worker.on("online", worker => {
     // ...
 });
 
 // Outside the scope:
-Worker.getWorker(worker=>{
+Worker.getWorker(worker => {
     // ...
 });
 
 // or
-Worker.getWorker().then(worker=>{
+Worker.getWorker().then(worker => {
     // ...
 });
 ```

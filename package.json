@@ -1,33 +1,39 @@
 {
-    "name": "sfn-worker",
-    "version": "0.1.60",
-    "description": "Simple Friendly Node.js Worker management for communications.",
-    "main": "index.js",
-    "types": "index.d.ts",
-    "scripts": {
-        "test": "node test"
-    },
-    "keywords": [
-        "sfn",
-        "multiprocessing",
-        "cluster",
-        "worker"
-    ],
-    "author": {
-        "name": "Ayon Lee",
-        "email": "i@hyurl.com",
-        "url": "http://hyurl.com"
-    },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/hyurl/sfn-worker.git"
-    },
-    "bugs": {
-        "url": "https://github.com/Hyurl/sfn-worker/issues",
-        "email": "i@hyurl.com"
-    },
-    "license": "MIT",
-    "dependencies": {
-        "@types/node": "^10.0.8"
-    }
+  "name": "sfn-worker",
+  "version": "0.2.0",
+  "description": "Simple Friendly Node.js Worker management for communications.",
+  "main": "dist/index.js",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "node test"
+  },
+  "keywords": [
+    "sfn",
+    "multiprocessing",
+    "cluster",
+    "worker"
+  ],
+  "author": {
+    "name": "Ayon Lee",
+    "email": "i@hyurl.com",
+    "url": "http://hyurl.com"
+  },
+  "homepage": "https://github.com/hyurl/sfn-worker",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyurl/sfn-worker.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Hyurl/sfn-worker/issues",
+    "email": "i@hyurl.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@types/bluebird": "^3.5.20",
+    "@types/lodash": "^4.14.108",
+    "bluebird": "^3.5.1",
+    "lodash": "^4.17.10",
+    "source-map-support": "^0.5.5",
+    "tslib": "^1.9.0"
+  }
 }
