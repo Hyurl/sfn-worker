@@ -1,6 +1,6 @@
 {
   "name": "sfn-worker",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Simple Friendly Node.js Worker management for communications.",
   "main": "dist/index.js",
   "types": "src/index.ts",
@@ -29,9 +29,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@types/bluebird": "^3.5.20",
     "@types/lodash": "^4.14.108",
-    "bluebird": "^3.5.1",
     "lodash": "^4.17.10",
     "source-map-support": "^0.5.5",
     "tslib": "^1.9.0"

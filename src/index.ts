@@ -1,7 +1,6 @@
 import "source-map-support/register";
 import { EventEmitter } from "events";
 import * as cluster from "cluster";
-import * as bluebird from "bluebird";
 import values = require("lodash/values");
 import filter = require("lodash/filter");
 
@@ -24,7 +23,6 @@ class Worker extends EventEmitter {
     state: "connecting" | "online" | "closed" = "connecting";
     protected receivers: string[] = [];
 
-    static Promise: PromiseConstructor = isNode6 ? Promise : <any>bluebird;
     protected static receivers: string[] = [];
 
     /**
@@ -408,7 +406,7 @@ class Worker extends EventEmitter {
                 }
             }
         } else {
-            return new this.Promise(resolve => {
+            return new Promise(resolve => {
                 this.getWorkers(resolve);
             });
         }
@@ -435,7 +433,7 @@ class Worker extends EventEmitter {
                 });
             }
         } else {
-            return new this.Promise(resolve => {
+            return new Promise(resolve => {
                 this.getWorker(resolve);
             });
         }

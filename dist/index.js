@@ -3,7 +3,6 @@ var tslib_1 = require("tslib");
 require("source-map-support/register");
 var events_1 = require("events");
 var cluster = require("cluster");
-var bluebird = require("bluebird");
 var values = require("lodash/values");
 var filter = require("lodash/filter");
 var ClusterWorkers = {};
@@ -359,7 +358,7 @@ var Worker = /** @class */ (function (_super) {
             }
         }
         else {
-            return new this.Promise(function (resolve) {
+            return new Promise(function (resolve) {
                 _this.getWorkers(resolve);
             });
         }
@@ -383,12 +382,11 @@ var Worker = /** @class */ (function (_super) {
             }
         }
         else {
-            return new this.Promise(function (resolve) {
+            return new Promise(function (resolve) {
                 _this.getWorker(resolve);
             });
         }
     };
-    Worker.Promise = isNode6 ? Promise : bluebird;
     Worker.receivers = [];
     return Worker;
 }(events_1.EventEmitter));
