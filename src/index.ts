@@ -7,6 +7,7 @@ import filter = require("lodash/filter");
 const ClusterWorkers: { [name: string]: cluster.Worker } = {};
 const Workers: { [name: string]: Worker } = {};
 
+var onReboot = Symbol("onReboot");
 var MaxListeners = 0;
 var isNode6 = parseInt(process.version.slice(1)) >= 6;
 var WorkerPids: {
@@ -206,12 +207,20 @@ class Worker extends EventEmitter {
         }
     }
 
-    /** Restarts the current worker. */
-    reboot(): void {
+    /**
+     * Restarts the current worker.
+     * @param cb The callback function can only be set in the master process.
+     */
+    reboot(cb?: () => void): void {
         if (cluster.isMaster) {
+            if (cb !== undefined) this[onReboot] = cb;
+
             this.state = "closed";
             ClusterWorkers[this.id].send("----reboot----");
         } else {
+            if (cb !== undefined)
+                throw new Error("The callback function can only be set in the master process.");
+
             process.exit(826); // 826 indicates reboot code.
         }
     }
@@ -440,12 +449,16 @@ class Worker extends EventEmitter {
     }
 }
 
+const WorkerConstructor = Worker;
+
 namespace Worker {
     /** Whether the process is the master. */
     export const isMaster: boolean = cluster.isMaster;
 
     /** Whether the process is a worker. */
     export const isWorker: boolean = cluster.isWorker;
+
+    export const Worker: typeof WorkerConstructor = WorkerConstructor;
 }
 
 export = Worker;
@@ -456,7 +469,7 @@ function createWorker(target: Worker, reborn = false) {
         worker = cluster.fork();
 
     if (reborn) {
-        // when reborn, copy event listners and remove unused worker-pid pairs.
+        // when reborn, copy event listeners and remove unused worker-pid pairs.
         target["_events"] = Workers[id]["_events"];
         target["_eventCount"] = Workers[id]["_eventCount"];
         target["_maxListeners"] = Workers[id]["_maxListeners"];
@@ -477,6 +490,11 @@ function createWorker(target: Worker, reborn = false) {
         if ((code || signal == "SIGKILL") && keepAlive || code === 826) {
             // If a worker exits accidentally, create a new one.
             createWorker(target, true);
+
+            if (code === 826 && target[onReboot]) {
+                target[onReboot].call(target);
+                delete target[onReboot];
+            }
         } else {
             target.state = "closed";
             target.emit("exit", code, signal);

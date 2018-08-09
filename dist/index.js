@@ -7,6 +7,7 @@ var values = require("lodash/values");
 var filter = require("lodash/filter");
 var ClusterWorkers = {};
 var Workers = {};
+var onReboot = Symbol("onReboot");
 var MaxListeners = 0;
 var isNode6 = parseInt(process.version.slice(1)) >= 6;
 var WorkerPids = {};
@@ -85,6 +86,7 @@ var Worker = /** @class */ (function (_super) {
         for (var _i = 1; _i < arguments.length; _i++) {
             data[_i - 1] = arguments[_i];
         }
+        var _a;
         if (event == "online")
             return false;
         if (cluster.isMaster) {
@@ -92,8 +94,8 @@ var Worker = /** @class */ (function (_super) {
                 _super.prototype.emit.apply(this, [event].concat(data));
             }
             else if (this.receivers.length) {
-                for (var _a = 0, _b = this.receivers; _a < _b.length; _a++) {
-                    var id = _b[_a];
+                for (var _b = 0, _c = this.receivers; _b < _c.length; _b++) {
+                    var id = _c[_b];
                     if (ClusterWorkers[id])
                         ClusterWorkers[id].send({ event: event, data: data });
                 }
@@ -105,7 +107,7 @@ var Worker = /** @class */ (function (_super) {
         }
         else {
             if (event == "error" || event == "exit") {
-                (_c = process.emit).call.apply(_c, [process, event].concat(data));
+                (_a = process.emit).call.apply(_a, [process, event].concat(data));
             }
             else if (this.receivers.length) {
                 process.send({
@@ -120,7 +122,6 @@ var Worker = /** @class */ (function (_super) {
             }
         }
         return true;
-        var _c;
     };
     Worker.prototype.to = function () {
         var workers = [];
@@ -172,13 +173,20 @@ var Worker = /** @class */ (function (_super) {
             process.exit();
         }
     };
-    /** Restarts the current worker. */
-    Worker.prototype.reboot = function () {
+    /**
+     * Restarts the current worker.
+     * @param cb The callback function can only be set in the master process.
+     */
+    Worker.prototype.reboot = function (cb) {
         if (cluster.isMaster) {
+            if (cb !== undefined)
+                this[onReboot] = cb;
             this.state = "closed";
             ClusterWorkers[this.id].send("----reboot----");
         }
         else {
+            if (cb !== undefined)
+                throw new Error("The callback function can only be set in the master process.");
             process.exit(826); // 826 indicates reboot code.
         }
     };
@@ -390,18 +398,20 @@ var Worker = /** @class */ (function (_super) {
     Worker.receivers = [];
     return Worker;
 }(events_1.EventEmitter));
-(function (Worker) {
+var WorkerConstructor = Worker;
+(function (Worker_1) {
     /** Whether the process is the master. */
-    Worker.isMaster = cluster.isMaster;
+    Worker_1.isMaster = cluster.isMaster;
     /** Whether the process is a worker. */
-    Worker.isWorker = cluster.isWorker;
+    Worker_1.isWorker = cluster.isWorker;
+    Worker_1.Worker = WorkerConstructor;
 })(Worker || (Worker = {}));
 /** Creates worker process. */
 function createWorker(target, reborn) {
     if (reborn === void 0) { reborn = false; }
     var id = target.id, keepAlive = target.keepAlive, worker = cluster.fork();
     if (reborn) {
-        // when reborn, copy event listners and remove unused worker-pid pairs.
+        // when reborn, copy event listeners and remove unused worker-pid pairs.
         target["_events"] = Workers[id]["_events"];
         target["_eventCount"] = Workers[id]["_eventCount"];
         target["_maxListeners"] = Workers[id]["_maxListeners"];
@@ -420,6 +430,10 @@ function createWorker(target, reborn) {
         if ((code || signal == "SIGKILL") && keepAlive || code === 826) {
             // If a worker exits accidentally, create a new one.
             createWorker(target, true);
+            if (code === 826 && target[onReboot]) {
+                target[onReboot].call(target);
+                delete target[onReboot];
+            }
         }
         else {
             target.state = "closed";
@@ -434,6 +448,7 @@ function createWorker(target, reborn) {
 if (cluster.isMaster) {
     // Handle transmit and broadcast.
     cluster.on("message", function (worker, msg) {
+        var _a;
         msg = isNode6 ? msg : worker;
         if (typeof msg == "object") {
             if (msg.event == "----transmit----") {
@@ -445,7 +460,6 @@ if (cluster.isMaster) {
                 Worker.broadcast.apply(Worker, [msg.event].concat(msg.data));
             }
         }
-        var _a;
     });
     Worker.on("online", function (worker) {
         // Handle requests to get workers from a worker.
@@ -460,13 +474,13 @@ if (cluster.isMaster) {
 else {
     // Trigger events when receiving messages.
     process.on("message", function (msg) {
+        var _a;
         if (msg && msg.event) {
             (_a = process.emit).call.apply(_a, [process, msg.event].concat(msg.data));
         }
         else if (msg == "----reboot----") {
             process.exit(826);
         }
-        var _a;
     });
 }
 module.exports = Worker;

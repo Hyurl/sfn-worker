@@ -1,6 +1,6 @@
 {
   "name": "sfn-worker",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Simple Friendly Node.js Worker management for communications.",
   "main": "dist/index.js",
   "types": "src/index.ts",
@@ -29,9 +29,11 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@types/lodash": "^4.14.108",
     "lodash": "^4.17.10",
     "source-map-support": "^0.5.5",
     "tslib": "^1.9.0"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.116"
   }
 }

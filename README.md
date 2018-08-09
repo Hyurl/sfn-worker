@@ -200,10 +200,12 @@ worker.getWorkers().then(workers => {
 Terminates the current worker. If this method is called, even if you set the 
 worker to `keepAlive`, it will be terminated anyway.
 
-### `worker.reboot()`
+### `worker.reboot(cb?: () => void)`
 
 Restarts the current worker. If this method is called, even if you set the 
 worker not to `keepAlive`, it will be restarted anyway.
+
+Be aware, the callback function can only be set in the master process.
 
 ### `Worker.on(event: string, listener: (...data: Any[]) => void): Worker`
 
