@@ -180,21 +180,6 @@ code at where listens the event.
 worker.broadcast("hi", `Hi everybody, I'm worker ${worker.id}.`);
 ```
 
-### `worker.getWorkers(cb?: (workers: Worker[]) => void): void | Promise<Worker[]>`
-
-*deprecated* since *2.0*, use static version `Worker.getWorkers()` instead.
-
-```javascript
-worker.getWorkers(workers => {
-    // ...
-});
-
-// Or
-worker.getWorkers().then(workers => {
-    // ...
-});
-```
-
 ### `worker.exit()`
 
 Terminates the current worker. If this method is called, even if you set the 
@@ -258,16 +243,13 @@ process.
 Worker.broadcast("event name", "Hi, everyone, I'm your master!");
 ```
 
-### `Worker.getWorkers(cb?: (workers: Worker[]) => void): void | Promise<Worker[]>`
+### `Worker.getWorkers(cb?: (err: Error, workers: Worker[]) => void): void | Promise<Worker[]>`
 
 This method allows you getting all connected workers, whether in the master or
-a worker process. If you provide the argument `cb`, it accepts one parameter, 
-which is an array carries all workers. If you don't provide `cb`, then a 
-`Promise` will be returned, and the callback function of `then()` is very much
-the same as `cb`.
+a worker process. If you don't provide `cb`, a `Promise` will be returned.
 
 ```javascript
-Worker.getWorkers(workers => {
+Worker.getWorkers((err, workers) => {
     // ...
 });
 
@@ -281,7 +263,7 @@ Be aware, **DON'T** add event listeners to the workers got by this method,
 they won't work in the worker process. Actually, you should always add event 
 listeners in the event `online` scope.
 
-### `Worker.getWorker(cb:? (worker: Worker) => void): void | Promise<Worker>`
+### `Worker.getWorker(cb:? (err: Error, worker: Worker) => void): void | Promise<Worker>`
 
 This method allows you getting the current worker instance in a worker process
 outside the `Worker.on("online")` scope. It's very helpful sometimes when you 
@@ -298,7 +280,7 @@ Worker.on("online", worker => {
 });
 
 // Outside the scope:
-Worker.getWorker(worker => {
+Worker.getWorker((err, worker) => {
     // ...
 });
 

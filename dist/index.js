@@ -1,10 +1,10 @@
 "use strict";
 var tslib_1 = require("tslib");
-require("source-map-support/register");
 var events_1 = require("events");
 var cluster = require("cluster");
 var values = require("lodash/values");
 var filter = require("lodash/filter");
+var assign = require("lodash/assign");
 var ClusterWorkers = {};
 var Workers = {};
 var onReboot = Symbol("onReboot");
@@ -22,6 +22,7 @@ var Worker = /** @class */ (function (_super) {
         if (keepAlive === void 0) { keepAlive = false; }
         var _this = _super.call(this) || this;
         _this.state = "connecting";
+        _this.rebootTimes = 0;
         _this.receivers = [];
         _this.id = id;
         _this.keepAlive = keepAlive;
@@ -161,9 +162,15 @@ var Worker = /** @class */ (function (_super) {
         }
         return true;
     };
-    Worker.prototype.getWorkers = function (cb) {
-        return this.constructor.getWorkers(cb);
-    };
+    /**
+     * Gets all connected workers.
+     * @deprecated use static `Worker.getWorkers()` instead.
+     */
+    // getWorkers(): Promise<this[]>;
+    // getWorkers(cb: (err: Error, workers: this[]) => void): void;
+    // getWorkers(cb?: (err: Error, workers: this[]) => void): void | Promise<this[]> {
+    //     return (<typeof Worker>this.constructor).getWorkers(cb);
+    // }
     /** Terminates the current worker. */
     Worker.prototype.exit = function () {
         if (cluster.isMaster) {
@@ -239,6 +246,7 @@ var Worker = /** @class */ (function (_super) {
                         if (!Workers[id]) {
                             // Initiate worker instance.
                             Workers[id] = new _this(id, keepAlive);
+                            assign(Workers[id], msg.data[0]);
                             Workers[id].state = "online";
                             WorkerPids[process.pid] = {
                                 id: id,
@@ -338,24 +346,37 @@ var Worker = /** @class */ (function (_super) {
         if (cb) {
             if (this.isMaster) {
                 process.nextTick(function () {
-                    cb(filter(values(Workers), function (worker) { return worker.isConnected(); }));
+                    cb(null, filter(values(Workers), function (worker) { return worker.isConnected(); }));
                 });
             }
             else {
                 var worker_1 = values(Workers)[0];
                 if (worker_1) {
+                    var timer_1 = setTimeout(function () {
+                        var err = new Error("Have been waiting too long to fetch workers.");
+                        cb(err, null);
+                        cb = null;
+                    }, 2000);
                     worker_1.once("----get-workers----", function (workers) {
-                        for (var i in workers) {
-                            if (workers[i].id == worker_1.id) {
-                                workers[i] = worker_1;
+                        clearTimeout(timer_1);
+                        if (!cb)
+                            return;
+                        try {
+                            for (var i in workers) {
+                                if (workers[i].id == worker_1.id) {
+                                    workers[i] = worker_1;
+                                }
+                                else {
+                                    var _worker = new _this(workers[i].id, workers[i].keepAlive);
+                                    assign(_worker, workers[i]);
+                                    workers[i] = _worker;
+                                }
                             }
-                            else {
-                                var state = workers[i].state;
-                                workers[i] = new _this(workers[i].id, workers[i].keepAlive);
-                                workers[i].state = state;
-                            }
+                            cb(null, workers);
                         }
-                        cb(workers);
+                        catch (err) {
+                            cb(err, null);
+                        }
                     }).emit("----get-workers----");
                 }
                 else {
@@ -366,8 +387,10 @@ var Worker = /** @class */ (function (_super) {
             }
         }
         else {
-            return new Promise(function (resolve) {
-                _this.getWorkers(resolve);
+            return new Promise(function (resolve, reject) {
+                _this.getWorkers(function (err, workers) {
+                    err ? reject(err) : resolve(workers);
+                });
             });
         }
     };
@@ -380,18 +403,28 @@ var Worker = /** @class */ (function (_super) {
             var worker_2 = values(Workers)[0];
             if (worker_2) {
                 process.nextTick(function () {
-                    cb(worker_2);
+                    cb(null, worker_2);
                 });
             }
             else {
+                var timer_2 = setTimeout(function () {
+                    var err = new Error("Have been waiting too long to fetch the worker instance.");
+                    cb(err, null);
+                    cb = null;
+                }, 2000);
                 process.once("----online----", function (id) {
-                    cb(Workers[id]);
+                    clearTimeout(timer_2);
+                    if (!cb)
+                        return;
+                    cb(null, Workers[id]);
                 });
             }
         }
         else {
-            return new Promise(function (resolve) {
-                _this.getWorker(resolve);
+            return new Promise(function (resolve, reject) {
+                _this.getWorker(function (err, worker) {
+                    err ? reject(err) : resolve(worker);
+                });
             });
         }
     };
@@ -417,6 +450,7 @@ function createWorker(target, reborn) {
         target["_maxListeners"] = Workers[id]["_maxListeners"];
         // WorkerPids = filter(WorkerPids, data => data.id != target.id);
     }
+    target.pid = worker.process.pid;
     Workers[id] = target;
     ClusterWorkers[id] = worker;
     WorkerPids[worker.process.pid] = { id: id, keepAlive: keepAlive, reborn: reborn };
@@ -429,6 +463,7 @@ function createWorker(target, reborn) {
     }).on("exit", function (code, signal) {
         if ((code || signal == "SIGKILL") && keepAlive || code === 826) {
             // If a worker exits accidentally, create a new one.
+            target.rebootTimes++;
             createWorker(target, true);
             if (code === 826 && target[onReboot]) {
                 target[onReboot].call(target);

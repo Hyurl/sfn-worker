@@ -33,7 +33,8 @@ if (Worker.isMaster) {
     });
 
     setTimeout(function () {
-        Worker.getWorkers(function (workers) {
+        Worker.getWorkers(function (err, workers) {
+            if (err) process.exit(1);
             assert.strictEqual(workers.length, 2);
             assert.strictEqual(workers[0].isConnected(), true);
             assert.strictEqual(workers[1].isConnected(), true);
@@ -101,7 +102,8 @@ if (Worker.isMaster) {
         } else if (worker.id == "B") {
             worker.broadcast("worker broadcast", "This is a broadcast message from worker B.");
 
-            Worker.getWorkers(function (workers) {
+            Worker.getWorkers(function (err, workers) {
+                if (err) process.exit(1);
                 assert.strictEqual(workers.length, 2);
                 assert.strictEqual(workers[0].isConnected(), true);
                 assert.strictEqual(workers[1].isConnected(), true);
@@ -125,6 +127,8 @@ if (Worker.isMaster) {
             assert.ok(!worker.isDead());
             assert.strictEqual(workerId, worker.id);
             assert.strictEqual(worker.isConnected(), true);
+        }).catch(function (err) {
+            process.exit(1);
         });
 
         try {

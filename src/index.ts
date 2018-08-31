@@ -1,8 +1,8 @@
-import "source-map-support/register";
 import { EventEmitter } from "events";
 import * as cluster from "cluster";
 import values = require("lodash/values");
 import filter = require("lodash/filter");
+import assign = require("lodash/assign");
 
 const ClusterWorkers: { [name: string]: cluster.Worker } = {};
 const Workers: { [name: string]: Worker } = {};
@@ -20,8 +20,10 @@ var WorkerPids: {
 
 class Worker extends EventEmitter {
     id: string;
+    pid: number;
     keepAlive: boolean;
     state: "connecting" | "online" | "closed" = "connecting";
+    rebootTimes = 0;
     protected receivers: string[] = [];
 
     protected static receivers: string[] = [];
@@ -192,11 +194,11 @@ class Worker extends EventEmitter {
      * Gets all connected workers.
      * @deprecated use static `Worker.getWorkers()` instead.
      */
-    getWorkers(): Promise<this[]>;
-    getWorkers(cb: (workers: this[]) => void): void;
-    getWorkers(cb?: (workers: this[]) => void): void | Promise<this[]> {
-        return (<typeof Worker>this.constructor).getWorkers(cb);
-    }
+    // getWorkers(): Promise<this[]>;
+    // getWorkers(cb: (err: Error, workers: this[]) => void): void;
+    // getWorkers(cb?: (err: Error, workers: this[]) => void): void | Promise<this[]> {
+    //     return (<typeof Worker>this.constructor).getWorkers(cb);
+    // }
 
     /** Terminates the current worker. */
     exit(): void {
@@ -284,6 +286,7 @@ class Worker extends EventEmitter {
                         if (!Workers[id]) {
                             // Initiate worker instance.
                             Workers[id] = new this(id, keepAlive);
+                            assign(Workers[id], msg.data[0]);
                             Workers[id].state = "online";
                             WorkerPids[process.pid] = {
                                 id,
@@ -384,29 +387,42 @@ class Worker extends EventEmitter {
 
     /** Gets all connected workers. */
     static getWorkers(): Promise<Worker[]>;
-    static getWorkers(cb: (workers: Worker[]) => void): void;
-    static getWorkers(cb?: (workers: Worker[]) => void) {
+    static getWorkers(cb: (err: Error, workers: Worker[]) => void): void;
+    static getWorkers(cb?: (err: Error, workers: Worker[]) => void) {
         if (cb) {
             if (this.isMaster) {
                 process.nextTick(() => {
-                    cb(filter(values(Workers), worker => worker.isConnected()));
+                    cb(null, filter(values(Workers), worker => worker.isConnected()));
                 });
             } else {
                 let worker = values(Workers)[0];
 
                 if (worker) {
-                    worker.once("----get-workers----", workers => {
-                        for (let i in workers) {
-                            if (workers[i].id == worker.id) {
-                                workers[i] = worker;
-                            } else {
-                                let state = workers[i].state;
-                                workers[i] = new this(workers[i].id, workers[i].keepAlive);
-                                workers[i].state = state;
-                            }
-                        }
+                    let timer = setTimeout(() => {
+                        let err = new Error("Have been waiting too long to fetch workers.");
+                        cb(err, null);
+                        cb = null;
+                    }, 2000);
 
-                        cb(workers);
+                    worker.once("----get-workers----", workers => {
+                        clearTimeout(timer);
+                        if (!cb) return;
+
+                        try {
+                            for (let i in workers) {
+                                if (workers[i].id == worker.id) {
+                                    workers[i] = worker;
+                                } else {
+                                    let _worker = new this(workers[i].id, workers[i].keepAlive);
+                                    assign(_worker, workers[i]);
+                                    workers[i] = _worker;
+                                }
+                            }
+
+                            cb(null, workers);
+                        } catch (err) {
+                            cb(err, null);
+                        }
                     }).emit("----get-workers----");
                 } else {
                     process.once(<any>"----online----", () => {
@@ -415,16 +431,18 @@ class Worker extends EventEmitter {
                 }
             }
         } else {
-            return new Promise(resolve => {
-                this.getWorkers(resolve);
+            return new Promise((resolve, reject) => {
+                this.getWorkers((err, workers) => {
+                    err ? reject(err) : resolve(workers);
+                });
             });
         }
     }
 
     /** (**worker only**) Gets the current worker. */
     static getWorker(): Promise<Worker>;
-    static getWorker(cb: (worker: Worker) => void): void;
-    static getWorker(cb?: (worker: Worker) => void) {
+    static getWorker(cb: (err: Error, worker: Worker) => void): void;
+    static getWorker(cb?: (err: Error, worker: Worker) => void) {
         if (this.isMaster) {
             throw new Error(`Cannot call static method '${this["name"]}.getWorker()' in the master process.`);
         }
@@ -434,16 +452,26 @@ class Worker extends EventEmitter {
 
             if (worker) {
                 process.nextTick(() => {
-                    cb(worker);
+                    cb(null, worker);
                 });
             } else {
+                let timer = setTimeout(() => {
+                    let err = new Error("Have been waiting too long to fetch the worker instance.");
+                    cb(err, null);
+                    cb = null;
+                }, 2000);
+
                 process.once(<any>"----online----", id => {
-                    cb(Workers[id]);
+                    clearTimeout(timer);
+                    if (!cb) return;
+                    cb(null, Workers[id]);
                 });
             }
         } else {
-            return new Promise(resolve => {
-                this.getWorker(resolve);
+            return new Promise((resolve, reject) => {
+                this.getWorker((err, worker) => {
+                    err ? reject(err) : resolve(worker);
+                });
             });
         }
     }
@@ -476,6 +504,7 @@ function createWorker(target: Worker, reborn = false) {
         // WorkerPids = filter(WorkerPids, data => data.id != target.id);
     }
 
+    target.pid = worker.process.pid;
     Workers[id] = target;
     ClusterWorkers[id] = worker;
     WorkerPids[worker.process.pid] = { id, keepAlive, reborn };
@@ -489,6 +518,7 @@ function createWorker(target: Worker, reborn = false) {
     }).on("exit", (code, signal) => {
         if ((code || signal == "SIGKILL") && keepAlive || code === 826) {
             // If a worker exits accidentally, create a new one.
+            target.rebootTimes++;
             createWorker(target, true);
 
             if (code === 826 && target[onReboot]) {
