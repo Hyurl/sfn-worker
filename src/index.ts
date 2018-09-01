@@ -96,16 +96,14 @@ class Worker extends EventEmitter {
             if (event == "error" || event == "exit") {
                 super.once(event, listener);
             } else {
-                let onceWrapper = () => {
-                    (worker, msg) => {
-                        msg = isNode6 ? msg : worker;
-    
-                        if (msg && msg.id == this.id && msg.event == event) {
-                            listener.call(this, ...msg.data);
-                            cluster.removeListener("message", onceWrapper);
-                        }
+                let onceWrapper = (worker, msg) => {
+                    msg = isNode6 ? msg : worker;
+
+                    if (msg && msg.id == this.id && msg.event == event) {
+                        listener.call(this, ...msg.data);
+                        cluster.removeListener("message", onceWrapper);
                     }
-                }
+                };
                 cluster.on("message", onceWrapper);
             }
         } else {
