@@ -162,15 +162,6 @@ var Worker = /** @class */ (function (_super) {
         }
         return true;
     };
-    /**
-     * Gets all connected workers.
-     * @deprecated use static `Worker.getWorkers()` instead.
-     */
-    // getWorkers(): Promise<this[]>;
-    // getWorkers(cb: (err: Error, workers: this[]) => void): void;
-    // getWorkers(cb?: (err: Error, workers: this[]) => void): void | Promise<this[]> {
-    //     return (<typeof Worker>this.constructor).getWorkers(cb);
-    // }
     /** Terminates the current worker. */
     Worker.prototype.exit = function () {
         if (cluster.isMaster) {

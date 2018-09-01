@@ -190,16 +190,6 @@ class Worker extends EventEmitter {
         return true;
     }
 
-    /** 
-     * Gets all connected workers.
-     * @deprecated use static `Worker.getWorkers()` instead.
-     */
-    // getWorkers(): Promise<this[]>;
-    // getWorkers(cb: (err: Error, workers: this[]) => void): void;
-    // getWorkers(cb?: (err: Error, workers: this[]) => void): void | Promise<this[]> {
-    //     return (<typeof Worker>this.constructor).getWorkers(cb);
-    // }
-
     /** Terminates the current worker. */
     exit(): void {
         if (cluster.isMaster) {
