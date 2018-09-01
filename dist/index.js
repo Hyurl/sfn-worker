@@ -65,16 +65,12 @@ var Worker = /** @class */ (function (_super) {
                 _super.prototype.once.call(this, event, listener);
             }
             else {
-                var onceWrapper_1 = function () {
-                    (function (worker, msg) {
-                        msg = isNode6 ? msg : worker;
-                        if (msg && msg.id == _this.id && msg.event == event) {
-                            listener.call.apply(listener, [_this].concat(msg.data));
-                            cluster.removeListener("message", onceWrapper_1);
-                        }
-                    });
-                };
-                cluster.on("message", onceWrapper_1);
+                cluster.once("message", function (worker, msg) {
+                    msg = isNode6 ? msg : worker;
+                    if (msg && msg.id == _this.id && msg.event == event) {
+                        listener.call.apply(listener, [_this].concat(msg.data));
+                    }
+                });
             }
         }
         else {
