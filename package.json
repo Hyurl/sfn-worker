@@ -1,6 +1,6 @@
 {
   "name": "sfn-worker",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Simple Friendly Node.js Worker management for communications.",
   "main": "dist/index.js",
   "types": "src/index.ts",

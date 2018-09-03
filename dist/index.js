@@ -5,6 +5,8 @@ var cluster = require("cluster");
 var values = require("lodash/values");
 var filter = require("lodash/filter");
 var assign = require("lodash/assign");
+var map = require("lodash/map");
+var pick = require("lodash/pick");
 var ClusterWorkers = {};
 var Workers = {};
 var onReboot = Symbol("onReboot");
@@ -22,6 +24,7 @@ var Worker = /** @class */ (function (_super) {
         if (keepAlive === void 0) { keepAlive = false; }
         var _this = _super.call(this) || this;
         _this.state = "connecting";
+        _this.startTime = Date.now();
         _this.rebootTimes = 0;
         _this.receivers = [];
         _this.id = id;
@@ -37,6 +40,10 @@ var Worker = /** @class */ (function (_super) {
     /** Whether the worker process is dead (`closed`). */
     Worker.prototype.isDead = function () {
         return this.state == "closed";
+    };
+    /** Gets the number of seconds the worker process has been running. */
+    Worker.prototype.uptime = function () {
+        return (Date.now() - this.startTime) / 1000;
     };
     Worker.prototype.on = function (event, listener) {
         var _this = this;
@@ -360,9 +367,9 @@ var Worker = /** @class */ (function (_super) {
                                     workers[i] = worker_1;
                                 }
                                 else {
-                                    var _worker = new _this(workers[i].id, workers[i].keepAlive);
-                                    assign(_worker, workers[i]);
-                                    workers[i] = _worker;
+                                    var _a = workers[i], id = _a.id, keepAlive = _a.keepAlive, worker_2 = new _this(id, keepAlive);
+                                    assign(worker_2, workers[i]);
+                                    workers[i] = worker_2;
                                 }
                             }
                             cb(null, workers);
@@ -393,10 +400,10 @@ var Worker = /** @class */ (function (_super) {
             throw new Error("Cannot call static method '" + this["name"] + ".getWorker()' in the master process.");
         }
         if (cb) {
-            var worker_2 = values(Workers)[0];
-            if (worker_2) {
+            var worker_3 = values(Workers)[0];
+            if (worker_3) {
                 process.nextTick(function () {
-                    cb(null, worker_2);
+                    cb(null, worker_3);
                 });
             }
             else {
@@ -433,43 +440,36 @@ var WorkerConstructor = Worker;
     Worker_1.Worker = WorkerConstructor;
 })(Worker || (Worker = {}));
 /** Creates worker process. */
-function createWorker(target, reborn) {
+function createWorker(worker, reborn) {
     if (reborn === void 0) { reborn = false; }
-    var id = target.id, keepAlive = target.keepAlive, worker = cluster.fork();
-    if (reborn) {
-        // when reborn, copy event listeners and remove unused worker-pid pairs.
-        target["_events"] = Workers[id]["_events"];
-        target["_eventCount"] = Workers[id]["_eventCount"];
-        target["_maxListeners"] = Workers[id]["_maxListeners"];
-        // WorkerPids = filter(WorkerPids, data => data.id != target.id);
-    }
-    target.pid = worker.process.pid;
-    Workers[id] = target;
-    ClusterWorkers[id] = worker;
-    WorkerPids[worker.process.pid] = { id: id, keepAlive: keepAlive, reborn: reborn };
-    worker.on("online", function () {
-        target.state = "online";
-        worker.send({
+    var id = worker.id, keepAlive = worker.keepAlive, _worker = cluster.fork();
+    worker.pid = _worker.process.pid;
+    Workers[id] = worker;
+    ClusterWorkers[id] = _worker;
+    WorkerPids[worker.pid] = { id: id, keepAlive: keepAlive, reborn: reborn };
+    _worker.on("online", function () {
+        worker.state = "online";
+        _worker.send({
             event: "online",
-            data: [target]
+            data: [worker]
         });
     }).on("exit", function (code, signal) {
         if ((code || signal == "SIGKILL") && keepAlive || code === 826) {
             // If a worker exits accidentally, create a new one.
-            target.rebootTimes++;
-            createWorker(target, true);
-            if (code === 826 && target[onReboot]) {
-                target[onReboot].call(target);
-                delete target[onReboot];
+            worker.rebootTimes++;
+            createWorker(worker, true);
+            if (code === 826 && worker[onReboot]) {
+                worker[onReboot].call(worker);
+                delete worker[onReboot];
             }
         }
         else {
-            target.state = "closed";
-            target.emit("exit", code, signal);
+            worker.state = "closed";
+            worker.emit("exit", code, signal);
             delete ClusterWorkers[id];
         }
     }).on("error", function (err) {
-        target.emit("error", err);
+        worker.emit("error", err);
     });
 }
 // Prepare workers.
@@ -492,10 +492,17 @@ if (cluster.isMaster) {
     Worker.on("online", function (worker) {
         // Handle requests to get workers from a worker.
         worker.on("----get-workers----", function () {
-            var workers = filter(values(Workers), function (worker) {
-                return worker.isConnected();
-            });
-            worker.emit("----get-workers----", workers);
+            var workers = filter(values(Workers), function (worker) { return worker.isConnected(); });
+            worker.emit("----get-workers----", map(workers, function (worker) {
+                return pick(worker, [
+                    "id",
+                    "pid",
+                    "keepAlive",
+                    "state",
+                    "startTime",
+                    "rebootTimes"
+                ]);
+            }));
         });
     });
 }

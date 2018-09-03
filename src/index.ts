@@ -3,6 +3,8 @@ import * as cluster from "cluster";
 import values = require("lodash/values");
 import filter = require("lodash/filter");
 import assign = require("lodash/assign");
+import map = require("lodash/map");
+import pick = require("lodash/pick");
 
 const ClusterWorkers: { [name: string]: cluster.Worker } = {};
 const Workers: { [name: string]: Worker } = {};
@@ -23,6 +25,7 @@ class Worker extends EventEmitter {
     pid: number;
     keepAlive: boolean;
     state: "connecting" | "online" | "closed" = "connecting";
+    startTime = Date.now();
     rebootTimes = 0;
     protected receivers: string[] = [];
 
@@ -51,6 +54,11 @@ class Worker extends EventEmitter {
     /** Whether the worker process is dead (`closed`). */
     isDead() {
         return this.state == "closed";
+    }
+
+    /** Gets the number of seconds the worker process has been running. */
+    uptime() {
+        return (Date.now() - this.startTime) / 1000;
     }
 
     /**
@@ -405,9 +413,11 @@ class Worker extends EventEmitter {
                                 if (workers[i].id == worker.id) {
                                     workers[i] = worker;
                                 } else {
-                                    let _worker = new this(workers[i].id, workers[i].keepAlive);
-                                    assign(_worker, workers[i]);
-                                    workers[i] = _worker;
+                                    let { id, keepAlive } = workers[i],
+                                        worker = new this(id, keepAlive);
+
+                                    assign(worker, workers[i]);
+                                    workers[i] = worker;
                                 }
                             }
 
@@ -484,47 +494,39 @@ namespace Worker {
 export = Worker;
 
 /** Creates worker process. */
-function createWorker(target: Worker, reborn = false) {
-    let { id, keepAlive } = target,
-        worker = cluster.fork();
+function createWorker(worker: Worker, reborn = false) {
+    let { id, keepAlive } = worker,
+        _worker = cluster.fork();
 
-    if (reborn) {
-        // when reborn, copy event listeners and remove unused worker-pid pairs.
-        target["_events"] = Workers[id]["_events"];
-        target["_eventCount"] = Workers[id]["_eventCount"];
-        target["_maxListeners"] = Workers[id]["_maxListeners"];
-        // WorkerPids = filter(WorkerPids, data => data.id != target.id);
-    }
+    worker.pid = _worker.process.pid;
+    Workers[id] = worker;
+    ClusterWorkers[id] = _worker;
+    WorkerPids[worker.pid] = { id, keepAlive, reborn };
 
-    target.pid = worker.process.pid;
-    Workers[id] = target;
-    ClusterWorkers[id] = worker;
-    WorkerPids[worker.process.pid] = { id, keepAlive, reborn };
-
-    worker.on("online", () => {
-        target.state = "online";
-        worker.send({
+    _worker.on("online", () => {
+        worker.state = "online";
+        _worker.send({
             event: "online",
-            data: [target]
+            data: [worker]
         });
     }).on("exit", (code, signal) => {
         if ((code || signal == "SIGKILL") && keepAlive || code === 826) {
             // If a worker exits accidentally, create a new one.
-            target.rebootTimes++;
-            createWorker(target, true);
+            worker.rebootTimes++;
+            createWorker(worker, true);
 
-            if (code === 826 && target[onReboot]) {
-                target[onReboot].call(target);
-                delete target[onReboot];
+            if (code === 826 && worker[onReboot]) {
+                worker[onReboot].call(worker);
+                delete worker[onReboot];
             }
         } else {
-            target.state = "closed";
-            target.emit("exit", code, signal);
+            worker.state = "closed";
+            worker.emit("exit", code, signal);
 
             delete ClusterWorkers[id];
         }
     }).on("error", err => {
-        target.emit("error", err);
+        worker.emit("error", err);
     });
 }
 
@@ -548,10 +550,18 @@ if (cluster.isMaster) {
     Worker.on("online", worker => {
         // Handle requests to get workers from a worker.
         worker.on("----get-workers----", () => {
-            let workers = filter(values(Workers), worker => {
-                return worker.isConnected();
-            });
-            worker.emit("----get-workers----", workers);
+            let workers = filter(values(Workers), worker => worker.isConnected());
+
+            worker.emit("----get-workers----", map(workers, worker => {
+                return pick(worker, [
+                    "id",
+                    "pid",
+                    "keepAlive",
+                    "state",
+                    "startTime",
+                    "rebootTimes"
+                ]);
+            }));
         });
     });
 } else {
